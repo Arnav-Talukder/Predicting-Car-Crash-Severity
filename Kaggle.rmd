@@ -1,6 +1,6 @@
 ---
-title: "kaggu"
-author: "Josue Ramirez"
+title: "Kaggle"
+author: "Arnav Talukder, Josue R,, Jesse R."
 date: "11/7/2022"
 output: html_document
 ---
@@ -169,16 +169,8 @@ err6 <- (table[2] + table[3]) / sum(table)
 write.csv(data.frame("Ob" = 1:15000, "Severity" = ifelse(pred >= .5, "SEVERE", "MILD")), file = "Boost4.csv")
 ```
 
-```{r }
+```{r}
 
-```
-
-
-
-
-```{r wa}
-
-```
 
 
 
