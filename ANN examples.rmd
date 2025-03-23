@@ -1,0 +1,317 @@
+---
+title: "ANN examples"
+author: "Akram Almohalwas"
+date: "June 6, 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(readr)
+library(ggplot2)
+boston <- read.csv("~/Statistics Department Files/STAT 101C/My Notes/Week 6/boston.csv")
+
+attach(boston)
+head(boston)
+dim(boston)
+boston<-na.omit(boston)
+qplot(crim)
+qplot(log(crim))
+mfull<-lm(crim~.,data=boston)
+summary(mfull)
+#install.packages('leaps')
+library(car)
+inverseResponsePlot(mfull)
+
+Y<- log(crim)
+
+#install.packages('leaps')
+library(ISLR)
+library(ggplot2)
+library(leaps)
+library(glmnet)
+library(pls)
+
+# Best Subset Selection
+set.seed(11)
+train=sample(c(TRUE,FALSE), nrow(boston),rep=TRUE)
+test=(!train)
+
+regfit.full=regsubsets(Y~.,boston[,-1])
+summary(regfit.full)
+regfit.full=regsubsets(Y~.,data=boston[,-1],nvmax=13)
+reg.summary=summary(regfit.full)
+names(reg.summary)
+
+reg.summary$which
+
+reg.summary$rss/length(Y)
+
+par(mfrow=c(1,1))
+plot(reg.summary$rss,xlab="Number of Variables",ylab="RSS",type="b")
+
+plot(reg.summary$rss/length(Y),xlab="Number of Variables",ylab="MSE",type="b")
+which.min(reg.summary$rss/length(Y))
+
+points(13,reg.summary$rss[13]/length(Y), col="red",cex=2,pch=20)
+
+plot(reg.summary$adjr2,xlab="Number of Variables",ylab="Adjusted RSq",type="b")
+which.max(reg.summary$adjr2)
+points(9,reg.summary$adjr2[9], col="red",cex=2,pch=20)
+
+plot(reg.summary$cp,xlab="Number of Variables",ylab="Cp",type='b')
+which.min(reg.summary$cp)
+points(9,reg.summary$cp[9],col="red",cex=2,pch=20)
+which.min(reg.summary$bic)
+plot(reg.summary$bic,xlab="Number of Variables",ylab="BIC",type='b')
+points(6,reg.summary$bic[6],col="red",cex=2,pch=20)
+
+reg.summary$which
+
+reg.summary$which[9,1:13]
+reg.summary$which[9,1:13]
+reg.summary$which[6,1:13]
+
+reg.summary$cp[9]
+reg.summary$bic[6]
+
+plot(regfit.full,scale="r2")
+plot(regfit.full,scale="adjr2")
+plot(regfit.full,scale="Cp")
+plot(regfit.full,scale="bic")
+
+coef(regfit.full,6)
+coef(regfit.full,9)
+coef(regfit.full,12)
+regfit.full
+
+# Forward and Backward Stepwise Selection
+head(boston)
+regfit.fwd=regsubsets(Y~.,data=boston[,-1],nvmax=13,method="forward")
+summary(regfit.fwd)
+regfit.fwd$vorder
+
+regfit.bwd=regsubsets(Y~.,data=boston[,-1],nvmax=13,method="backward")
+
+summary(regfit.bwd)
+regfit.bwd$vorder
+
+coef(regfit.full,13)
+coef(regfit.fwd,13)
+coef(regfit.bwd,13)
+
+firstmodel<-lm(Y~1,data=boston[,-1])
+mfull<-lm(Y~.,data=boston[,-1])
+summary(mfull)
+
+step(mfull,direction="backward",data=boston[,-1])
+step(firstmodel,direction="forward",scope=list(lower=~1,upper=~ zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+medv),data=boston[,-1])
+
+# Ridge Regression
+x=model.matrix(Y~.,boston)[,-1]
+y=log(boston$crim)
+
+grid=10^seq(10,-2,length=100)
+ridge.mod=glmnet(x,y,alpha=0,lambda=grid)
+dim(coef(ridge.mod))
+ridge.mod$lambda[50]
+coef(ridge.mod)[,50]
+sqrt(sum(coef(ridge.mod)[-1,50]^2))
+ridge.mod$lambda[60]
+coef(ridge.mod)[,60]
+sqrt(sum(coef(ridge.mod)[-1,60]^2))
+predict(ridge.mod,s=50,type="coefficients")[1:15,]
+set.seed(11)
+train=sample(1:nrow(x), nrow(x)/2)
+test=(-train)
+y.test=y[test]
+ridge.mod=glmnet(x[train,],y[train],alpha=0,lambda=grid, thresh=1e-12)
+ridge.pred=predict(ridge.mod,s=4,newx=x[test,])
+mean((ridge.pred-y.test)^2)
+mean((mean(y[train])-y.test)^2)
+ridge.pred=predict(ridge.mod,s=1e10,newx=x[test,])
+mean((ridge.pred-y.test)^2)
+ridge.pred=predict(ridge.mod,s=0,newx=x[test,],exact=T)
+mean((ridge.pred-y.test)^2)
+lm(y~x, subset=train)
+predict(ridge.mod,s=0,exact=T,type="coefficients")[1:15,]
+set.seed(11)
+cv.out=cv.glmnet(x[train,],y[train],alpha=0)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+bestlam
+ridge.pred=predict(ridge.mod,s=bestlam,newx=x[test,])
+mean((ridge.pred-y.test)^2)
+out=glmnet(x,y,alpha=0)
+predict(out,type="coefficients",s=bestlam)[1:15,]
+
+# The Lasso
+
+lasso.mod=glmnet(x[train,],y[train],alpha=1,lambda=grid)
+plot(lasso.mod)
+set.seed(11)
+cv.out=cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+lasso.pred=predict(lasso.mod,s=bestlam,newx=x[test,])
+mean((lasso.pred-y.test)^2)
+out=glmnet(x,y,alpha=1,lambda=grid)
+lasso.coef=predict(out,type="coefficients",s=bestlam)[1:15,]
+lasso.coef
+lasso.coef[lasso.coef!=0]
+
+# Principal Components Regression
+
+set.seed(11)
+pcr.fit=pcr(y~., data=boston,scale=TRUE,validation="CV")
+summary(pcr.fit)
+validationplot(pcr.fit,val.type="MSEP")
+plot(pcr.fit)
+set.seed(11)
+pcr.fit=pcr(y~., data=boston,subset=train,scale=TRUE, validation="CV")
+validationplot(pcr.fit,val.type="MSEP")
+abline(v=8,col="blue")
+
+pcr.pred=predict(pcr.fit,x[test,],ncomp=8)
+mean((pcr.pred-y.test)^2)
+pcr.fit=pcr(y~x,scale=TRUE,ncomp=8)
+summary(pcr.fit)
+
+pcr.fit$loadings
+
+
+
+out.pc=princomp(boston[,2:14], cor=T) #does the same thing as standardizing the variables
+summary(out.pc)
+
+out.pc$loadings
+plot(out.pc)
+screeplot(out.pc)
+
+# Partial Least Squares
+
+set.seed(11)
+pls.fit=plsr(y~., data=boston,subset=train,scale=TRUE, validation="CV")
+summary(pls.fit)
+validationplot(pls.fit,val.type="MSEP")
+pls.pred=predict(pls.fit,x[test,],ncomp=3)
+mean((pls.pred-y.test)^2)
+pls.fit=plsr(y~., data=boston,scale=TRUE,ncomp=3)
+summary(pls.fit)
+
+
+library(MASS)
+#install.packages('neuralnet')
+library(neuralnet)
+library(ggplot2)
+DataFrame<- Boston
+str(DataFrame)
+dim(DataFrame)
+help(Boston)
+qplot(medv,data=DataFrame)
+qqnorm(DataFrame$medv)
+qqline(DataFrame$medv)
+apply(DataFrame,2,range)
+apply(DataFrame,2,mean)
+
+maxValue<- apply(DataFrame,2,max)
+minValue<- apply(DataFrame,2,min)
+
+DataFrame<- as.data.frame(scale(DataFrame,center =minValue,scale = maxValue))
+apply(DataFrame,2,range)
+apply(DataFrame,2,mean)
+set.seed(123456789)
+ind<-sample(1:nrow(DataFrame),400)
+trainDF<-DataFrame[ind,]
+testDF<- DataFrame[-ind,]
+allVars<-colnames(DataFrame)
+allVars
+# predictorVars<-allVars[!allVars%in%"medv"]
+# predictorVars<-paste("medv~",predictorVars,collapse="+")
+# form<- as.formula(paste("medv~",predictorVars,collapse="+"))
+#form
+# ANN<-neuralnet(formula=form,hidden = c(4,2),linear.output = T,data=trainDF)
+
+ANN<- neuralnet(formula = medv~crim + zn + indus + chas + nox + rm + age + dis + rad + tax + ptratio + black +lstat, hidden=c(4,2),linear.output = T,data=trainDF)
+
+# crim + zn + indus + chas + nox + rm + age + dis + rad + tax + ptratio + black +lstat
+plot(ANN)
+
+ANN2<- neuralnet(formula = medv~crim + zn + indus + chas + nox + rm + age + dis + rad + tax + ptratio + black +lstat, hidden=c(6,4,2),linear.output = T,data=trainDF)
+plot(ANN2)
+summary(ANN)
+
+predictions1<- compute(ANN,testDF[,1:13])
+str(predictions1)
+predictions1$neurons
+predictmedv<-predictions1$net.result*(max(testDF$medv-min(testDF$medv))+min(testDF$medv))
+actualmedv<- testDF$medv*(max(testDF$medv-min(testDF$medv))+min(testDF$medv))
+MSE<-sum((actualmedv-predictmedv)^2)/nrow(testDF)
+MSE
+
+plot(actualmedv,predictmedv,main="Real values vs Predicted Value")
+cor(actualmedv,predictmedv)
+
+lm1<- lm(actualmedv~predictmedv)
+summary(lm1)
+
+plot(actualmedv,predictmedv,main="Real values vs Predicted Value")
+abline(lm1,col="blue")
+
+
+# Using ANN as a classifier:
+
+# counterfeit Data
+library(readr)
+library(ggplot2)
+#banknote <- read_delim("~/Statistics Department Files/STAT 101C/My Notes/Week 2/banknote.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+banknote <- read.delim("~/Statistics Department Files/STAT 101C/My Notes/Week 8/banknote.txt")
+
+pairs(banknote[,-7])
+
+# Creating A logistic regression using all the 5 numerical predictors:
+
+m1=glm(Y~Diagonal+Length+Right+Left+Top,data=banknote, family="binomial")
+summary(m1)
+
+# Using m1 we predict the probabilities 
+pred.probm1<-predict(m1,type="response")
+
+data.outm1=data.frame(truth=banknote$Y,
+                      predicted=pred.probm1, Diagonal=banknote$Diagonal)
+
+# Here we plot the probabilitoes against the predictor Diagonal
+
+pm1 = ggplot(data.outm1,aes(Diagonal, predicted)) +geom_point()
+pm1
+ppm1= pm1+geom_point(aes(colour=truth))
+ppm1
+
+ppm1+geom_smooth() 
+ppm1+geom_smooth(span=.5)
+
+# Here we create a confusion matrix for our logistic regression classifier
+
+predicted.counterfeit=pred.probm1>.5
+table(predicted.counterfeit, factor(banknote$Y))
+
+names(banknote)
+BN.ANN<- neuralnet(formula = Y~Length+Left+Right+Bottom+Top+Diagonal, hidden=c(4,2),linear.output = F,data=banknote)
+plot(BN.ANN)
+
+BN.predictions<- compute(BN.ANN,banknote[,1:6])
+BN.predictions$neurons
+BN.predictions$net.result
+BN.class<- BN.predictions$net.result>.5
+table(BN.class, factor(banknote$Y))
+
+```

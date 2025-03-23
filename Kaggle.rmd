@@ -1,0 +1,184 @@
+---
+title: "kaggu"
+author: "Josue Ramirez"
+date: "11/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(MASS)
+library(class)
+library(dplyr)
+library(randomForest)
+library(tidyr)
+library(DescTools)
+library(fastDummies)
+library(gbm)
+library(stringi)
+library(tree)
+test <- read.csv("AcctestNoY.csv")
+train <- read.csv("Acctrain.csv")
+zipcodes <- read.csv("RUCA2010zipcode.csv")
+colnames(zipcodes)[1] <- "zipcode"
+zipcodes$zipcode <- as.character(zipcodes$zipcode)
+```
+
+
+
+```{r data prep}
+index <- sample(1:35000, 3500)
+
+rtrain <- train
+rtest <- test
+
+rtrain <- separate(rtrain, Zipcode, into = c("zipcode", "extras"), sep = "-")
+rtrain <- left_join(rtrain[, -12], zipcodes, by = "zipcode")[, -c(11, 34, 35, 37)]
+rtrain$RUCA1 <- as.character(rtrain$RUCA1)
+
+description_pred <- sapply(stri_extract_all_regex(rtrain$Description, paste(c("dead"), collapse = '|')), toString)
+description_pred[description_pred == "NA"] <- "accident"
+rtrain$description_pred <- description_pred
+rtrain <- separate(rtrain, description_pred, into = c("description_pred", "extras"), sep = ", ")
+rtrain <- rtrain[, -c(8, 35)]
+
+rtrain <- separate(rtrain, Start_Time, into = c("Date", "Time"), sep = "T")
+month <- sapply(stri_extract_all_regex(rtrain$Date, paste(c("-..-"), collapse = '|')), toString)
+month[which(month == "-11-" | month == "-12-" | month == "-01-")] <- "Winter"
+month[which(month == "-02-" | month == "-03-" | month == "-04-")] <- "Spring"
+month[which(month == "-05-" | month == "-06-" | month == "-07-")] <- "Summer"
+month[which(month == "-08-" | month == "-09-" | month == "-10-")] <- "Fall"
+rtrain$month <- month
+rtrain <- rtrain[, -c(2, 3)]
+
+rtest <- separate(rtest, Zipcode, into = c("zipcode", "extras"), sep = "-")
+rtest <- left_join(rtest[, -11], zipcodes, by = "zipcode")[, -c(10, 33, 34, 36)]
+rtest$RUCA1 <- as.character(rtest$RUCA1)
+
+description_pred <- sapply(stri_extract_all_regex(rtest$Description, paste(c("closed", "caution", "traffic", "blocked", "alternate"), collapse = '|')), toString)
+description_pred[description_pred == "NA"] <- "accident"
+rtest$description_pred <- description_pred
+rtest <- separate(rtest, description_pred, into = c("description_pred", "extras"), sep = ", ")
+rtest <- rtest[, -c(7, 34)]
+
+rtest <- separate(rtest, Start_Time, into = c("Date", "Time"), sep = "T")
+month <- sapply(stri_extract_all_regex(rtest$Date, paste(c("-..-"), collapse = '|')), toString)
+month[which(month == "-11-" | month == "-12-" | month == "-01-")] <- "Winter"
+month[which(month == "-02-" | month == "-03-" | month == "-04-")] <- "Spring"
+month[which(month == "-05-" | month == "-06-" | month == "-07-")] <- "Summer"
+month[which(month == "-08-" | month == "-09-" | month == "-10-")] <- "Fall"
+rtest$month <- month
+rtest <- rtest[, -c(1, 2)]
+
+names(rtrain[, -1]) == names(rtest)
+rtt <- rbind(rtrain[, -1], rtest)
+rep1 <- lapply(rtt[which(lapply(rtt, is.numeric) == T)], median, na.rm = T)
+rtt[which(lapply(rtt, is.numeric) == T)] <- replace_na(rtt[which(lapply(rtt, is.numeric) == T)], replace = rep1)
+
+rep2 <- lapply(rtt[which(lapply(rtt, is.numeric) == F)], Mode, na.rm = T)
+rtt[which(lapply(rtt, is.numeric) == F)] <- replace_na(rtt[which(lapply(rtt, is.numeric) == F)], replace = rep2)
+rtt[which(lapply(rtt, is.numeric) == F)] <- data.frame(lapply(rtt[which(lapply(rtt, is.numeric) == F)], as.factor))
+
+rtt[which(lapply(rtt, is.numeric) == T)] <- data.frame(scale(rtt[which(lapply(rtt, is.numeric) == T)]))
+
+rtrain <- cbind("Severity" = factor(rtrain$Severity), rtt[1:35000, ])
+rtest <- rtt[-1:-35000, ]
+
+
+
+traintrain <- rtrain[-index, ]
+traintest <- rtrain[index, ]
+
+train[which(train$Severity == "SEVERE"), ]
+
+
+summary(traintrain)
+```
+
+```{r GLM}
+lrm1 <- glm(Severity ~ ., family = binomial(), data = traintrain)
+pred1 <- predict(lrm1, traintest, type = "response")
+length(pred1)
+table <- table(ifelse(pred1 >= .5, "SEVERE", "MILD"), traintest$Severity)
+err1 <- (table[2] + table[3]) / sum(table)
+1-err1
+
+
+write.csv(data.frame("Ob" = 1:15000, "Severity" = ifelse(pred1 >= .5, "SEVERE", "MILD")), file = "glm2.csv")
+```
+
+```{r KNN}
+dummytraintrain <- dummy_cols(traintrain[,-1], remove_selected_columns = T)
+dummytraintest <- dummy_cols(traintest[,-1], remove_selected_columns = T)
+
+kmodel1 <- class::knn(dummytraintrain, dummytraintest, traintrain[, 1], k = 25)
+table <- table(kmodel1, traintest$Severity)
+err2 <- (table[2] + table[3]) / sum(table)
+1-err2
+
+
+```
+
+
+```{r LDA}
+lda1 <-lda(Severity ~ ., data = traintrain)
+pred <- predict(lda1, traintest)
+table <- table(Original = traintest$Severity, Predicted = pred$class)
+err3 <- (table[2] + table[3]) / sum(table)
+1 - err3
+```
+
+
+```{r QDA}
+qda1 <- qda(Severity ~ ., data = traintrain)
+pred <- predict(qda1, traintest)
+table <- table(Original = traintest$Severity, Predicted = pred$class)
+err4 <- (table[2] + table[3]) / sum(table)
+1 - err4
+```
+
+```{r Random Forest}
+subset = sample(1:31500, 31500)
+rf1 = randomForest(Severity~.,data=traintrain[, -c(2, 3, 4, 5)],mtry=5,importance=TRUE, ntree = 1000)
+rf1
+
+pred5 <- predict(rf1, newdata= traintest)
+
+table <- table(pred5, traintest$Severity)
+err5 <- (table[2] + table[3]) / sum(table)
+1 - err5
+
+
+write.csv(data.frame("Ob" = 1:15000, "Severity" = pred5), file = "RF5.csv")
+
+```
+
+```{r Boosting}
+btraintrain <- traintrain
+btraintrain$Severity <- ifelse(btraintrain$Severity == "MILD", 0, 1)
+brtrain <- rtrain
+brtrain$Severity <- ifelse(brtrain$Severity == "MILD", 0, 1)
+boost1 <- gbm(Severity~.,data=btraintrain[, -c(2, 3, 4, 5)],distribution="bernoulli",n.trees=10000, shrinkage = .1, interaction.depth = 2)
+summary(boost1)
+pred <- predict(boost1,newdata= traintest,n.trees=10000) 
+table <- table(ifelse(pred >= .5, "SEVERE", "MILD"), traintest$Severity)
+err6 <- (table[2] + table[3]) / sum(table)
+1-err6
+
+write.csv(data.frame("Ob" = 1:15000, "Severity" = ifelse(pred >= .5, "SEVERE", "MILD")), file = "Boost4.csv")
+```
+
+```{r }
+
+```
+
+
+
+
+```{r wa}
+
+```
+
+
+
